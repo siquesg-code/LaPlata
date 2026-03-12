@@ -1,11 +1,43 @@
-from pydantic import BaseModel
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional
+
+from pydantic import BaseModel, EmailStr, Field
+
+
+# Auth
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+    full_name: str = Field(..., min_length=1, max_length=255)
+    organization_name: str = Field(..., min_length=1, max_length=255)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    full_name: str
+    role: str
+    organization_id: int
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 # Chat
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=5000)
 
 
 class ChatResponse(BaseModel):
@@ -17,21 +49,21 @@ class ChatResponse(BaseModel):
 
 # Task
 class TaskCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=5000)
     status: str = "todo"
     priority: str = "medium"
     due_date: Optional[date] = None
-    assignee: Optional[str] = None
+    assignee: Optional[str] = Field(None, max_length=100)
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=5000)
     status: Optional[str] = None
     priority: Optional[str] = None
     due_date: Optional[date] = None
-    assignee: Optional[str] = None
+    assignee: Optional[str] = Field(None, max_length=100)
 
 
 class TaskOut(BaseModel):
@@ -51,9 +83,9 @@ class TaskOut(BaseModel):
 
 # Email
 class EmailCreate(BaseModel):
-    to_address: str
-    subject: str
-    body: str
+    to_address: EmailStr
+    subject: str = Field(..., min_length=1, max_length=500)
+    body: str = Field(..., min_length=1, max_length=50000)
     status: str = "draft"
 
 
@@ -71,11 +103,11 @@ class EmailOut(BaseModel):
 
 # Expense
 class ExpenseCreate(BaseModel):
-    description: str
-    amount: float
+    description: str = Field(..., min_length=1, max_length=500)
+    amount: float = Field(..., gt=0)
     category: str = "other"
     expense_date: Optional[date] = None
-    vendor: Optional[str] = None
+    vendor: Optional[str] = Field(None, max_length=255)
 
 
 class ExpenseOut(BaseModel):
@@ -99,10 +131,10 @@ class ExpenseSummary(BaseModel):
 
 # Document
 class DocumentCreate(BaseModel):
-    title: str
-    content: Optional[str] = None
-    summary: Optional[str] = None
-    doc_type: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=500)
+    content: Optional[str] = Field(None, max_length=100000)
+    summary: Optional[str] = Field(None, max_length=5000)
+    doc_type: Optional[str] = Field(None, max_length=50)
 
 
 class DocumentOut(BaseModel):
@@ -119,13 +151,13 @@ class DocumentOut(BaseModel):
 
 # Meeting
 class MeetingCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    attendees: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=5000)
+    attendees: Optional[str] = Field(None, max_length=2000)
     meeting_date: date
-    meeting_time: Optional[str] = None
-    duration_minutes: int = 60
-    location: Optional[str] = None
+    meeting_time: Optional[str] = Field(None, max_length=10)
+    duration_minutes: int = Field(60, ge=1, le=1440)
+    location: Optional[str] = Field(None, max_length=255)
 
 
 class MeetingOut(BaseModel):
@@ -145,9 +177,9 @@ class MeetingOut(BaseModel):
 
 # Report
 class ReportCreate(BaseModel):
-    title: str
-    content: str
-    report_type: Optional[str] = None
+    title: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1, max_length=100000)
+    report_type: Optional[str] = Field(None, max_length=50)
 
 
 class ReportOut(BaseModel):

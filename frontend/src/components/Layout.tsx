@@ -9,14 +9,18 @@ import {
   FileText,
   BarChart3,
   Bot,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import type { UserInfo } from "@/api";
 
 interface LayoutProps {
   children: ReactNode;
   currentPage: string;
   onNavigate: (page: string) => void;
+  user: UserInfo;
+  onLogout: () => void;
 }
 
 const navItems = [
@@ -30,7 +34,7 @@ const navItems = [
   { id: "reports", label: "Reports", icon: BarChart3 },
 ];
 
-export default function Layout({ children, currentPage, onNavigate }: LayoutProps) {
+export default function Layout({ children, currentPage, onNavigate, user, onLogout }: LayoutProps) {
   return (
     <div className="flex h-screen bg-zinc-50">
       {/* Sidebar */}
@@ -66,12 +70,19 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
             );
           })}
         </nav>
-        <div className="p-4">
+        <div className="p-4 space-y-3">
           <div className="rounded-lg bg-zinc-800 p-3">
-            <p className="text-xs text-zinc-400">
-              Powered by AI. Ask me anything about your business operations.
-            </p>
+            <p className="text-sm font-medium text-zinc-200 truncate">{user.full_name}</p>
+            <p className="text-xs text-zinc-400 truncate">{user.email}</p>
           </div>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800"
+            onClick={onLogout}
+          >
+            <LogOut className="w-4 h-4" />
+            Sign Out
+          </Button>
         </div>
       </aside>
 

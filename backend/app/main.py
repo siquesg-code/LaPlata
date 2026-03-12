@@ -1,16 +1,26 @@
-import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlalchemy import text
 
-from app.database import init_db
-from app.routers import chat, tasks, emails, expenses, documents, meetings, reports, dashboard
+from app.config import settings
+from app.database import async_session, init_db
+from app.logging_config import RequestLoggingMiddleware, setup_logging
+from app.routers import auth, chat, dashboard, documents, emails, expenses, meetings, reports, tasks
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
+
+setup_logging()
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -20,16 +30,30 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="AI Admin Agent", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",  # Reflects actual origin (required when credentials are included)
+    allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
+app.add_middleware(RequestLoggingMiddleware)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(tasks.router)
 app.include_router(emails.router)
@@ -42,7 +66,15 @@ app.include_router(dashboard.router)
 
 @app.get("/healthz")
 async def healthz():
-    return {"status": "ok"}
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "disconnected"},
+        )
 
 
 # Serve frontend static files

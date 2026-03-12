@@ -2,23 +2,79 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 
 function getBaseUrl(): string {
   if (API_URL) return API_URL;
-  // Build origin without embedded credentials (handles user:pass@domain URLs)
   const loc = window.location;
   return `${loc.protocol}//${loc.host}`;
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("access_token");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const base = getBaseUrl();
   const url = `${base}${path}`;
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
+    headers: getAuthHeaders(),
     ...options,
   });
+  if (res.status === 401) {
+    localStorage.removeItem("access_token");
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `API error: ${res.status} ${res.statusText}`);
   }
   return res.json();
+}
+
+// Auth
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface UserInfo {
+  id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  organization_id: number;
+  is_active: boolean;
+}
+
+export function login(email: string, password: string): Promise<TokenResponse> {
+  return request("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function register(data: {
+  email: string;
+  password: string;
+  full_name: string;
+  organization_name: string;
+}): Promise<TokenResponse> {
+  return request("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getMe(): Promise<UserInfo> {
+  return request("/api/auth/me");
+}
+
+export function logout(): void {
+  localStorage.removeItem("access_token");
+  window.location.reload();
 }
 
 // Chat
