@@ -1,20 +1,18 @@
 [tool.poetry]
-name = "app"
+name = "ai-admin-agent"
 version = "0.1.0"
-description = ""
+description = "AI-powered business administration assistant"
 authors = ["Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
-fastapi = {extras = ["standard"], version = "^0.135.1"}
-psycopg = {extras = ["binary"], version = "^3.3.3"}
-sqlalchemy = "^2.0.48"
-aiosqlite = "^0.22.1"
-openai = "^2.26.0"
-python-dateutil = "^2.9.0.post0"
-python-multipart = "^0.0.22"
-
+python = "^3.11"
+fastapi = ">=0.115"
+uvicorn = {extras = ["standard"], version = ">=0.30"}
+sqlalchemy = ">=2.0"
+aiosqlite = ">=0.20"
+pydantic = ">=2.0"
+openai = ">=1.0"
 
 [build-system]
 requires = ["poetry-core"]
