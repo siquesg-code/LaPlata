@@ -1,0 +1,11 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend/"],
+  "eslint.workingDirectories": ["frontend"],
+  "editor.formatOnSave": true,
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/node_modules": true
+  },
+  "tailwindCSS.experimental.configFile": "frontend/tailwind.config.js"
+}
