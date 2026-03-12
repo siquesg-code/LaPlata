@@ -1,10 +1,13 @@
+"""Tests for document CRUD endpoints."""
+
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_document(client):
+async def test_create_document(authenticated_client: AsyncClient):
     payload = {"title": "Test Doc", "content": "Some content", "doc_type": "general"}
-    response = await client.post("/api/documents", json=payload)
+    response = await authenticated_client.post("/api/documents", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["title"] == "Test Doc"
@@ -14,19 +17,19 @@ async def test_create_document(client):
 
 
 @pytest.mark.asyncio
-async def test_list_documents(client):
-    await client.post("/api/documents", json={"title": "Doc1"})
-    await client.post("/api/documents", json={"title": "Doc2"})
-    response = await client.get("/api/documents")
+async def test_list_documents(authenticated_client: AsyncClient):
+    await authenticated_client.post("/api/documents", json={"title": "Doc1"})
+    await authenticated_client.post("/api/documents", json={"title": "Doc2"})
+    response = await authenticated_client.get("/api/documents")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
 
 
 @pytest.mark.asyncio
-async def test_delete_document(client):
-    create_resp = await client.post("/api/documents", json={"title": "To Delete"})
+async def test_delete_document(authenticated_client: AsyncClient):
+    create_resp = await authenticated_client.post("/api/documents", json={"title": "To Delete"})
     doc_id = create_resp.json()["id"]
-    response = await client.delete(f"/api/documents/{doc_id}")
+    response = await authenticated_client.delete(f"/api/documents/{doc_id}")
     assert response.status_code == 200
     assert response.json()["message"] == "Document deleted"

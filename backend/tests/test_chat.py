@@ -1,9 +1,12 @@
+"""Tests for chat endpoints."""
+
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_chat_greeting(client):
-    response = await client.post("/api/chat", json={"message": "hello"})
+async def test_chat_greeting(authenticated_client: AsyncClient):
+    response = await authenticated_client.post("/api/chat", json={"message": "hello"})
     assert response.status_code == 200
     data = response.json()
     assert data["role"] == "assistant"
@@ -12,8 +15,8 @@ async def test_chat_greeting(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_dashboard(client):
-    response = await client.post("/api/chat", json={"message": "show dashboard"})
+async def test_chat_dashboard(authenticated_client: AsyncClient):
+    response = await authenticated_client.post("/api/chat", json={"message": "show dashboard"})
     assert response.status_code == 200
     data = response.json()
     assert data["role"] == "assistant"
@@ -22,8 +25,8 @@ async def test_chat_dashboard(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_create_task(client):
-    response = await client.post("/api/chat", json={"message": "create task Test Task"})
+async def test_chat_create_task(authenticated_client: AsyncClient):
+    response = await authenticated_client.post("/api/chat", json={"message": "create task Test Task"})
     assert response.status_code == 200
     data = response.json()
     assert data["role"] == "assistant"
@@ -32,9 +35,9 @@ async def test_chat_create_task(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_history(client):
-    await client.post("/api/chat", json={"message": "hello"})
-    response = await client.get("/api/chat/history")
+async def test_chat_history(authenticated_client: AsyncClient):
+    await authenticated_client.post("/api/chat", json={"message": "hello"})
+    response = await authenticated_client.get("/api/chat/history")
     assert response.status_code == 200
     data = response.json()
     # Should have at least user message + assistant response
@@ -42,11 +45,17 @@ async def test_chat_history(client):
 
 
 @pytest.mark.asyncio
-async def test_chat_clear_history(client):
-    await client.post("/api/chat", json={"message": "hi"})
-    response = await client.delete("/api/chat/history")
+async def test_chat_clear_history(authenticated_client: AsyncClient):
+    await authenticated_client.post("/api/chat", json={"message": "hi"})
+    response = await authenticated_client.delete("/api/chat/history")
     assert response.status_code == 200
     assert response.json()["message"] == "Chat history cleared"
     # Verify history is empty
-    history_resp = await client.get("/api/chat/history")
+    history_resp = await authenticated_client.get("/api/chat/history")
     assert len(history_resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_unauthorized(client: AsyncClient):
+    response = await client.post("/api/chat", json={"message": "hello"})
+    assert response.status_code == 401

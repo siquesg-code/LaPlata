@@ -1,8 +1,12 @@
+"""Tests for health check endpoint."""
+
 import pytest
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_healthz(client):
+async def test_healthz(client: AsyncClient):
     response = await client.get("/healthz")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"

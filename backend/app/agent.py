@@ -1,20 +1,24 @@
 """AI Agent that processes natural language requests and performs business operations."""
 
 import json
-import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from openai import AsyncOpenAI
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models import (
-    Task, Email, Expense, Document, Meeting, Report, ChatMessage,
+    ChatMessage,
+    Document,
+    Email,
+    Expense,
+    Meeting,
+    Report,
+    Task,
 )
-
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 SYSTEM_PROMPT = """You are an AI business administration assistant. You help users manage their business operations efficiently.
 
@@ -198,33 +202,33 @@ TOOLS = [
 ]
 
 
-async def execute_tool(tool_name: str, args: dict[str, Any], db: AsyncSession) -> str:
+async def execute_tool(tool_name: str, args: dict[str, Any], db: AsyncSession, organization_id: int) -> str:
     """Execute a tool and return the result as a string."""
     if tool_name == "create_task":
-        return await _create_task(db, args)
+        return await _create_task(db, args, organization_id)
     elif tool_name == "list_tasks":
-        return await _list_tasks(db, args)
+        return await _list_tasks(db, args, organization_id)
     elif tool_name == "update_task":
-        return await _update_task(db, args)
+        return await _update_task(db, args, organization_id)
     elif tool_name == "complete_task":
-        return await _complete_task(db, args)
+        return await _complete_task(db, args, organization_id)
     elif tool_name == "draft_email":
-        return await _draft_email(db, args)
+        return await _draft_email(db, args, organization_id)
     elif tool_name == "add_expense":
-        return await _add_expense(db, args)
+        return await _add_expense(db, args, organization_id)
     elif tool_name == "summarize_document":
-        return await _summarize_document(db, args)
+        return await _summarize_document(db, args, organization_id)
     elif tool_name == "schedule_meeting":
-        return await _schedule_meeting(db, args)
+        return await _schedule_meeting(db, args, organization_id)
     elif tool_name == "generate_report":
-        return await _generate_report(db, args)
+        return await _generate_report(db, args, organization_id)
     elif tool_name == "get_dashboard":
-        return await _get_dashboard(db)
+        return await _get_dashboard(db, organization_id)
     else:
         return f"Unknown tool: {tool_name}"
 
 
-async def _create_task(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _create_task(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     due = None
     if args.get("due_date"):
         try:
@@ -237,6 +241,7 @@ async def _create_task(db: AsyncSession, args: dict[str, Any]) -> str:
         priority=args.get("priority", "medium"),
         due_date=due,
         assignee=args.get("assignee"),
+        organization_id=organization_id,
     )
     db.add(task)
     await db.commit()
@@ -247,8 +252,8 @@ async def _create_task(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _list_tasks(db: AsyncSession, args: dict[str, Any]) -> str:
-    query = select(Task).order_by(Task.created_at.desc())
+async def _list_tasks(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
+    query = select(Task).where(Task.organization_id == organization_id).order_by(Task.created_at.desc())
     status = args.get("status")
     if status:
         query = query.where(Task.status == status)
@@ -265,9 +270,9 @@ async def _list_tasks(db: AsyncSession, args: dict[str, Any]) -> str:
     return json.dumps({"tasks": task_list, "count": len(task_list)})
 
 
-async def _update_task(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _update_task(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     task_id = args.pop("task_id")
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.id == task_id, Task.organization_id == organization_id))
     task = result.scalar_one_or_none()
     if not task:
         return json.dumps({"success": False, "error": f"Task {task_id} not found"})
@@ -279,28 +284,29 @@ async def _update_task(db: AsyncSession, args: dict[str, Any]) -> str:
                 continue
         if hasattr(task, key):
             setattr(task, key, value)
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return json.dumps({"success": True, "message": f"Task {task_id} updated"})
 
 
-async def _complete_task(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _complete_task(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     task_id = args["task_id"]
-    result = await db.execute(select(Task).where(Task.id == task_id))
+    result = await db.execute(select(Task).where(Task.id == task_id, Task.organization_id == organization_id))
     task = result.scalar_one_or_none()
     if not task:
         return json.dumps({"success": False, "error": f"Task {task_id} not found"})
     task.status = "done"
-    task.updated_at = datetime.utcnow()
+    task.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return json.dumps({"success": True, "message": f"Task '{task.title}' marked as completed"})
 
 
-async def _draft_email(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _draft_email(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     email = Email(
         to_address=args["to_address"],
         subject=args["subject"],
         body=args["body"],
+        organization_id=organization_id,
     )
     db.add(email)
     await db.commit()
@@ -311,7 +317,7 @@ async def _draft_email(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _add_expense(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _add_expense(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     exp_date = None
     if args.get("expense_date"):
         try:
@@ -326,6 +332,7 @@ async def _add_expense(db: AsyncSession, args: dict[str, Any]) -> str:
         category=args.get("category", "other"),
         expense_date=exp_date,
         vendor=args.get("vendor"),
+        organization_id=organization_id,
     )
     db.add(expense)
     await db.commit()
@@ -336,18 +343,35 @@ async def _add_expense(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _summarize_document(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _summarize_document(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     content = args["content"]
-    # Generate a simple summary
-    sentences = content.replace("\n", " ").split(".")
-    sentences = [s.strip() for s in sentences if s.strip()]
-    summary = ". ".join(sentences[:3]) + "." if sentences else "No content to summarize."
+
+    summary = ""
+    if settings.openai_api_key:
+        try:
+            client = AsyncOpenAI(api_key=settings.openai_api_key)
+            response = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Summarize the following document concisely in 2-3 sentences."},
+                    {"role": "user", "content": content},
+                ],
+            )
+            summary = response.choices[0].message.content or ""
+        except Exception:
+            summary = ""
+
+    if not summary:
+        sentences = content.replace("\n", " ").split(".")
+        sentences = [s.strip() for s in sentences if s.strip()]
+        summary = ". ".join(sentences[:3]) + "." if sentences else "No content to summarize."
 
     doc = Document(
         title=args["title"],
         content=content,
         summary=summary,
         doc_type=args.get("doc_type", "general"),
+        organization_id=organization_id,
     )
     db.add(doc)
     await db.commit()
@@ -358,7 +382,7 @@ async def _summarize_document(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _schedule_meeting(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _schedule_meeting(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     try:
         m_date = date.fromisoformat(args["meeting_date"])
     except ValueError:
@@ -371,6 +395,7 @@ async def _schedule_meeting(db: AsyncSession, args: dict[str, Any]) -> str:
         meeting_time=args.get("meeting_time", "10:00"),
         duration_minutes=args.get("duration_minutes", 60),
         location=args.get("location", ""),
+        organization_id=organization_id,
     )
     db.add(meeting)
     await db.commit()
@@ -384,13 +409,13 @@ async def _schedule_meeting(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _generate_report(db: AsyncSession, args: dict[str, Any]) -> str:
+async def _generate_report(db: AsyncSession, args: dict[str, Any], organization_id: int) -> str:
     report_type = args.get("report_type", "general")
     title = args["title"]
-    content_parts: list[str] = [f"# {title}\n", f"**Generated:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n"]
+    content_parts: list[str] = [f"# {title}\n", f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n"]
 
     if report_type == "expense":
-        result = await db.execute(select(Expense))
+        result = await db.execute(select(Expense).where(Expense.organization_id == organization_id))
         expenses = result.scalars().all()
         total = sum(e.amount for e in expenses)
         content_parts.append(f"## Expense Summary\n- **Total Expenses:** ${total:,.2f}\n- **Number of Entries:** {len(expenses)}\n")
@@ -403,7 +428,7 @@ async def _generate_report(db: AsyncSession, args: dict[str, Any]) -> str:
                 content_parts.append(f"- **{cat.title()}:** ${amt:,.2f}\n")
 
     elif report_type == "task":
-        result = await db.execute(select(Task))
+        result = await db.execute(select(Task).where(Task.organization_id == organization_id))
         tasks = result.scalars().all()
         total = len(tasks)
         done = sum(1 for t in tasks if t.status == "done")
@@ -414,7 +439,7 @@ async def _generate_report(db: AsyncSession, args: dict[str, Any]) -> str:
         content_parts.append(f"- **Completion Rate:** {completion_rate:.1f}%\n")
 
     elif report_type == "meeting":
-        result = await db.execute(select(Meeting).order_by(Meeting.meeting_date))
+        result = await db.execute(select(Meeting).where(Meeting.organization_id == organization_id).order_by(Meeting.meeting_date))
         meetings = result.scalars().all()
         content_parts.append(f"## Meeting Summary\n- **Total Meetings:** {len(meetings)}\n")
         upcoming = [m for m in meetings if m.meeting_date >= date.today()]
@@ -426,15 +451,15 @@ async def _generate_report(db: AsyncSession, args: dict[str, Any]) -> str:
 
     else:
         # General overview
-        task_count = (await db.execute(select(func.count(Task.id)))).scalar() or 0
-        expense_total_result = await db.execute(select(func.coalesce(func.sum(Expense.amount), 0)))
+        task_count = (await db.execute(select(func.count(Task.id)).where(Task.organization_id == organization_id))).scalar() or 0
+        expense_total_result = await db.execute(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.organization_id == organization_id))
         expense_total = expense_total_result.scalar() or 0
-        email_count = (await db.execute(select(func.count(Email.id)))).scalar() or 0
-        meeting_count = (await db.execute(select(func.count(Meeting.id)))).scalar() or 0
+        email_count = (await db.execute(select(func.count(Email.id)).where(Email.organization_id == organization_id))).scalar() or 0
+        meeting_count = (await db.execute(select(func.count(Meeting.id)).where(Meeting.organization_id == organization_id))).scalar() or 0
         content_parts.append(f"## Business Overview\n- **Tasks:** {task_count}\n- **Total Expenses:** ${expense_total:,.2f}\n- **Emails Drafted:** {email_count}\n- **Meetings Scheduled:** {meeting_count}\n")
 
     report_content = "\n".join(content_parts)
-    report = Report(title=title, content=report_content, report_type=report_type)
+    report = Report(title=title, content=report_content, report_type=report_type, organization_id=organization_id)
     db.add(report)
     await db.commit()
     await db.refresh(report)
@@ -444,18 +469,18 @@ async def _generate_report(db: AsyncSession, args: dict[str, Any]) -> str:
     })
 
 
-async def _get_dashboard(db: AsyncSession) -> str:
-    task_total = (await db.execute(select(func.count(Task.id)))).scalar() or 0
-    task_done = (await db.execute(select(func.count(Task.id)).where(Task.status == "done"))).scalar() or 0
+async def _get_dashboard(db: AsyncSession, organization_id: int) -> str:
+    task_total = (await db.execute(select(func.count(Task.id)).where(Task.organization_id == organization_id))).scalar() or 0
+    task_done = (await db.execute(select(func.count(Task.id)).where(Task.status == "done", Task.organization_id == organization_id))).scalar() or 0
     task_pending = task_total - task_done
-    expense_total_result = await db.execute(select(func.coalesce(func.sum(Expense.amount), 0)))
+    expense_total_result = await db.execute(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.organization_id == organization_id))
     expense_total = expense_total_result.scalar() or 0
-    email_count = (await db.execute(select(func.count(Email.id)))).scalar() or 0
+    email_count = (await db.execute(select(func.count(Email.id)).where(Email.organization_id == organization_id))).scalar() or 0
     meeting_count = (await db.execute(
-        select(func.count(Meeting.id)).where(Meeting.meeting_date >= date.today())
+        select(func.count(Meeting.id)).where(Meeting.meeting_date >= date.today(), Meeting.organization_id == organization_id)
     )).scalar() or 0
-    doc_count = (await db.execute(select(func.count(Document.id)))).scalar() or 0
-    report_count = (await db.execute(select(func.count(Report.id)))).scalar() or 0
+    doc_count = (await db.execute(select(func.count(Document.id)).where(Document.organization_id == organization_id))).scalar() or 0
+    report_count = (await db.execute(select(func.count(Report.id)).where(Report.organization_id == organization_id))).scalar() or 0
 
     return json.dumps({
         "total_tasks": task_total,
@@ -469,36 +494,37 @@ async def _get_dashboard(db: AsyncSession) -> str:
     })
 
 
-async def process_message(user_message: str, db: AsyncSession) -> tuple[str, str | None]:
+async def process_message(user_message: str, db: AsyncSession, organization_id: int) -> tuple[str, str | None]:
     """Process a user message and return (response_text, tool_used_or_none)."""
     # Save user message
-    user_msg = ChatMessage(role="user", content=user_message)
+    user_msg = ChatMessage(role="user", content=user_message, organization_id=organization_id)
     db.add(user_msg)
     await db.commit()
 
     tool_used = None
     response_text = ""
 
-    if OPENAI_API_KEY:
-        response_text, tool_used = await _process_with_openai(user_message, db)
+    if settings.openai_api_key:
+        response_text, tool_used = await _process_with_openai(user_message, db, organization_id)
     else:
-        response_text, tool_used = await _process_with_rules(user_message, db)
+        response_text, tool_used = await _process_with_rules(user_message, db, organization_id)
 
     # Save assistant message
-    assistant_msg = ChatMessage(role="assistant", content=response_text, tool_used=tool_used)
+    assistant_msg = ChatMessage(role="assistant", content=response_text, tool_used=tool_used, organization_id=organization_id)
     db.add(assistant_msg)
     await db.commit()
 
     return response_text, tool_used
 
 
-async def _process_with_openai(user_message: str, db: AsyncSession) -> tuple[str, str | None]:
+async def _process_with_openai(user_message: str, db: AsyncSession, organization_id: int) -> tuple[str, str | None]:
     """Use OpenAI function calling to process the message."""
-    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     # Get recent chat history for context
     result = await db.execute(
-        select(ChatMessage).order_by(ChatMessage.created_at.desc()).limit(20)
+        select(ChatMessage).where(ChatMessage.organization_id == organization_id)
+        .order_by(ChatMessage.created_at.desc()).limit(20)
     )
     history = list(reversed(result.scalars().all()))
 
@@ -522,7 +548,7 @@ async def _process_with_openai(user_message: str, db: AsyncSession) -> tuple[str
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
 
-            tool_result = await execute_tool(tool_name, tool_args, db)
+            tool_result = await execute_tool(tool_name, tool_args, db, organization_id)
 
             # Get final response from OpenAI with tool result
             messages.append(message.model_dump())
@@ -542,16 +568,16 @@ async def _process_with_openai(user_message: str, db: AsyncSession) -> tuple[str
 
     except Exception as e:
         # Fallback to rules if OpenAI fails
-        return await _process_with_rules(user_message, db)
+        return await _process_with_rules(user_message, db, organization_id)
 
 
-async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str, str | None]:
+async def _process_with_rules(user_message: str, db: AsyncSession, organization_id: int) -> tuple[str, str | None]:
     """Rule-based fallback when no OpenAI key is available."""
     msg = user_message.lower().strip()
 
     # Dashboard / overview
     if any(kw in msg for kw in ["dashboard", "overview", "summary", "stats", "status"]):
-        result = await execute_tool("get_dashboard", {}, db)
+        result = await execute_tool("get_dashboard", {}, db, organization_id)
         data = json.loads(result)
         response = (
             f"## Business Dashboard\n\n"
@@ -575,7 +601,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
             if p in msg:
                 priority = p
                 break
-        result = await execute_tool("create_task", {"title": title.strip().title(), "priority": priority}, db)
+        result = await execute_tool("create_task", {"title": title.strip().title(), "priority": priority}, db, organization_id)
         data = json.loads(result)
         if data["success"]:
             t = data["task"]
@@ -594,7 +620,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
         args: dict[str, Any] = {}
         if status_filter:
             args["status"] = status_filter
-        result = await execute_tool("list_tasks", args, db)
+        result = await execute_tool("list_tasks", args, db, organization_id)
         data = json.loads(result)
         if not data["tasks"]:
             return "No tasks found. Try creating one!", "list_tasks"
@@ -610,7 +636,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
     if any(kw in msg for kw in ["complete task", "finish task", "done task", "mark done", "mark complete"]):
         task_id = _extract_number(msg)
         if task_id:
-            result = await execute_tool("complete_task", {"task_id": task_id}, db)
+            result = await execute_tool("complete_task", {"task_id": task_id}, db, organization_id)
             data = json.loads(result)
             return data.get("message", "Task updated!"), "complete_task"
         return "Please specify the task ID to complete. Example: 'Complete task 1'", "complete_task"
@@ -625,7 +651,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
             "to_address": to_addr,
             "subject": subject.strip().title() if len(subject) < 100 else subject[:100],
             "body": body.strip(),
-        }, db)
+        }, db, organization_id)
         data = json.loads(result)
         if data["success"]:
             e = data["email"]
@@ -646,7 +672,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
                 "description": desc.strip().title(),
                 "amount": amount,
                 "category": category,
-            }, db)
+            }, db, organization_id)
             data = json.loads(result)
             if data["success"]:
                 exp = data["expense"]
@@ -670,7 +696,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
             "title": title.strip().title(),
             "meeting_date": meeting_date,
             "meeting_time": "10:00",
-        }, db)
+        }, db, organization_id)
         data = json.loads(result)
         if data["success"]:
             m = data["meeting"]
@@ -688,7 +714,7 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
         result = await execute_tool("generate_report", {
             "title": title,
             "report_type": report_type,
-        }, db)
+        }, db, organization_id)
         data = json.loads(result)
         if data["success"]:
             return data["report"]["content"], "generate_report"
@@ -698,9 +724,9 @@ async def _process_with_rules(user_message: str, db: AsyncSession) -> tuple[str,
     if any(kw in msg for kw in ["summarize", "document", "summary of"]):
         content = _extract_after(msg, ["summarize", "document"]) or msg
         result = await execute_tool("summarize_document", {
-            "title": f"Document — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+            "title": f"Document — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
             "content": content,
-        }, db)
+        }, db, organization_id)
         data = json.loads(result)
         if data["success"]:
             return f"**Document saved and summarized!**\n\n**Summary:** {data['document']['summary']}", "summarize_document"
