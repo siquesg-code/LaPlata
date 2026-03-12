@@ -24,7 +24,7 @@ app = FastAPI(title="AI Admin Agent", lifespan=lifespan)
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origin_regex=r".*",  # Reflects actual origin (required when credentials are included)
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
