@@ -2,16 +2,17 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.auth import create_access_token, get_password_hash
 from app.database import Base, get_db
 from app.main import app
 from app.models import Organization, User
-from app.auth import create_access_token, get_password_hash
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -44,9 +45,10 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    with patch("app.main.init_db", new_callable=AsyncMock):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
     app.dependency_overrides.clear()
 
 

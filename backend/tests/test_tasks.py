@@ -5,60 +5,78 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, get_password_hash
-from app.models import Organization, Task, User
+from app.models import Organization, User
 
 
 @pytest.mark.asyncio
 async def test_create_task(authenticated_client: AsyncClient):
-    response = await authenticated_client.post("/api/tasks", json={
-        "title": "Test Task",
-        "description": "A test task",
-        "priority": "high",
-    })
+    payload = {"title": "Test Task", "description": "A test task", "priority": "high"}
+    response = await authenticated_client.post("/api/tasks", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["title"] == "Test Task"
+    assert data["description"] == "A test task"
     assert data["priority"] == "high"
+    assert data["status"] == "todo"
+    assert "id" in data
 
 
 @pytest.mark.asyncio
 async def test_list_tasks(authenticated_client: AsyncClient):
-    # Create a task first
-    await authenticated_client.post("/api/tasks", json={
-        "title": "Task 1",
-    })
+    await authenticated_client.post("/api/tasks", json={"title": "Task A"})
+    await authenticated_client.post("/api/tasks", json={"title": "Task B"})
     response = await authenticated_client.get("/api/tasks")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) >= 1
+    assert len(data) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_filter_by_status(authenticated_client: AsyncClient):
+    await authenticated_client.post("/api/tasks", json={"title": "Todo Task", "status": "todo"})
+    await authenticated_client.post("/api/tasks", json={"title": "Done Task", "status": "done"})
+    response = await authenticated_client.get("/api/tasks", params={"status": "todo"})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "Todo Task"
+
+
+@pytest.mark.asyncio
+async def test_get_task(authenticated_client: AsyncClient):
+    create_resp = await authenticated_client.post("/api/tasks", json={"title": "Specific Task"})
+    task_id = create_resp.json()["id"]
+    response = await authenticated_client.get(f"/api/tasks/{task_id}")
+    assert response.status_code == 200
+    assert response.json()["title"] == "Specific Task"
+
+
+@pytest.mark.asyncio
+async def test_get_task_not_found(authenticated_client: AsyncClient):
+    response = await authenticated_client.get("/api/tasks/9999")
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_update_task(authenticated_client: AsyncClient):
-    # Create a task
-    create_resp = await authenticated_client.post("/api/tasks", json={
-        "title": "Update Me",
-    })
+    create_resp = await authenticated_client.post("/api/tasks", json={"title": "Old Title"})
     task_id = create_resp.json()["id"]
-
-    # Update it
-    response = await authenticated_client.patch(f"/api/tasks/{task_id}", json={
-        "title": "Updated Title",
-        "status": "in_progress",
-    })
+    response = await authenticated_client.patch(f"/api/tasks/{task_id}", json={"title": "New Title", "status": "in_progress"})
     assert response.status_code == 200
-    assert response.json()["title"] == "Updated Title"
+    data = response.json()
+    assert data["title"] == "New Title"
+    assert data["status"] == "in_progress"
 
 
 @pytest.mark.asyncio
 async def test_delete_task(authenticated_client: AsyncClient):
-    create_resp = await authenticated_client.post("/api/tasks", json={
-        "title": "Delete Me",
-    })
+    create_resp = await authenticated_client.post("/api/tasks", json={"title": "To Delete"})
     task_id = create_resp.json()["id"]
-
     response = await authenticated_client.delete(f"/api/tasks/{task_id}")
     assert response.status_code == 200
+    # Verify deletion
+    get_resp = await authenticated_client.get(f"/api/tasks/{task_id}")
+    assert get_resp.status_code == 404
 
 
 @pytest.mark.asyncio
