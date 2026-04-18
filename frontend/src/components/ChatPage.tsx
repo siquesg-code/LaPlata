@@ -101,8 +101,24 @@ export default function ChatPage() {
       if (line.trim() === "") {
         return <br key={i} />;
       }
-      const content = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-      return <p key={i} dangerouslySetInnerHTML={{ __html: content }} />;
+      const parts: (string | JSX.Element)[] = [];
+      const boldRegex = /\*\*(.*?)\*\*/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = boldRegex.exec(line)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(line.slice(lastIndex, match.index));
+        }
+        parts.push(<strong key={`${i}-b-${match.index}`}>{match[1]}</strong>);
+        lastIndex = match.index + match[0].length;
+      }
+
+      if (lastIndex < line.length) {
+        parts.push(line.slice(lastIndex));
+      }
+
+      return <p key={i}>{parts}</p>;
     });
   };
 
