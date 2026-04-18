@@ -1,4 +1,6 @@
 {
+  // Poetry creates .venv inside backend/ (see backend/poetry.toml).
+  // Unix: backend/.venv/bin/python | Windows: backend/.venv/Scripts/python.exe
   "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
   "python.analysis.extraPaths": ["${workspaceFolder}/backend/"],
   "eslint.workingDirectories": ["frontend"],
