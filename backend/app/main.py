@@ -51,7 +51,7 @@ if STATIC_DIR.exists():
 
     @app.get("/{full_path:path}")
     async def serve_frontend(request: Request, full_path: str):
-        file_path = STATIC_DIR / full_path
-        if full_path and file_path.exists() and file_path.is_file():
+        file_path = (STATIC_DIR / full_path).resolve()
+        if full_path and file_path.is_relative_to(STATIC_DIR.resolve()) and file_path.exists() and file_path.is_file():
             return FileResponse(str(file_path))
         return FileResponse(str(STATIC_DIR / "index.html"))
