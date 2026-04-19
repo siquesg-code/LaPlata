@@ -89,13 +89,15 @@ export default function ChatPage() {
         );
       }
       if (line.startsWith("- ")) {
-        const content = line.slice(2).replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+        const content = line.slice(2);
+        const parts = content.split(/(\*\*.*?\*\*)/g);
         return (
-          <li
-            key={i}
-            className="ml-4 list-disc"
-            dangerouslySetInnerHTML={{ __html: content }}
-          />
+          <li key={i} className="ml-4 list-disc">
+            {parts.map((part, partIdx) => {
+              const boldMatch = part.match(/^\*\*(.*?)\*\*$/);
+              return boldMatch ? <strong key={partIdx}>{boldMatch[1]}</strong> : part;
+            })}
+          </li>
         );
       }
       if (line.trim() === "") {
