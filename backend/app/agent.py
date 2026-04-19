@@ -505,7 +505,6 @@ async def _process_with_openai(user_message: str, db: AsyncSession) -> tuple[str
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in history:
         messages.append({"role": msg.role, "content": msg.content})
-    messages.append({"role": "user", "content": user_message})
 
     try:
         response = await client.chat.completions.create(
